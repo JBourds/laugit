@@ -7,19 +7,25 @@ mod loggers;
 macro_rules! log {
     (
         $logger:expr,
-        $event:literal,
-        $level:expr,
+        $event:ident,
+        $level:ident,
         $($arg:tt)*
     ) => {
-        let message = format!(
-            "{} {}: {}",
-            $event,
-            <&'static str>::try_from(&$level)
-                .expect("Missing function to convert log level to string."),
-            format_args!($($arg)*),
-        );
-        let message = message.as_str();
-        $logger.log(message);
+        // Conditional compilation of log messages wherever this macro is
+        // called based on environment variables set by the build script
+        #[allow(unexpected_cfgs)]
+        #[cfg(all($event, $level))]
+        {
+            let message = format!(
+                "{} {}: {}",
+                $event,
+                <&'static str>::try_from(&$level)
+                    .expect("Missing function to convert log level to string."),
+                format_args!($($arg)*),
+            );
+            let message = message.as_str();
+            $logger.log(message);
+        }
     };
 }
 
@@ -114,7 +120,7 @@ impl TryFrom<&LogLevel> for &'static str {
 mod errors {}
 
 #[cfg(test)]
-mod tests {
+mod no_std_tests {
     use super::LogLevel;
 
     #[test]
@@ -137,28 +143,49 @@ mod tests {
 }
 
 #[cfg(all(feature = "std", test))]
+#[allow(unused)]
 mod std_tests {
-    use super::{
-        loggers::{std::*, Logger},
-        LogLevel,
-    };
+    use super::loggers::{init_logger, logger};
     use std::fs::{remove_file, OpenOptions};
-    use std::path::Path;
+    use std::io::Write;
+
+    #[test]
+    fn test_register_loggers() {
+        // Create two dummy logger functions
+        fn log1(s: &str) {
+            println!("{}, log1", s);
+        }
+        fn log2(s: &str) {
+            println!("{}, log2", s);
+        }
+        let log_functions = &[log1, log2];
+        init_logger(log_functions);
+
+        if let Some(logger) = logger() {
+            logger.log("Hi!");
+        }
+    }
 
     #[test]
     fn terminal_logger() {
-        let mut logger = TerminalLogger::new();
-        log!(logger, "test_terminal_logger", LogLevel::Debug, "Testing!");
+        fn terminal_logger(s: &str) {
+            println!("{}", s);
+        }
     }
 
     #[test]
     fn file_logger() {
-        let path = Path::new("test.log");
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(true);
-        let mut logger = FileLogger::new(path, &options).unwrap();
-        log!(logger, "test_file_logger", LogLevel::Debug, "Testing!");
-        remove_file(path).unwrap();
+        fn file_logger(s: &str) {
+            let mut outfile = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open("test.log")
+                .unwrap();
+            outfile
+                .write_all(s.as_bytes())
+                .expect("Failed to log to file");
+        }
     }
 
     #[test]

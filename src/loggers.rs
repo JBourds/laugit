@@ -1,48 +1,45 @@
+use core::ptr::addr_of;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static mut LOGGER: LoggerManager = LoggerManager { loggers: &[] };
+static mut INITIALIZED: AtomicBool = AtomicBool::new(false);
+
 #[allow(dead_code)]
-pub trait Logger {
-    fn log(&mut self, s: &str);
+pub fn logger() -> Option<&'static LoggerManager> {
+    unsafe {
+        if INITIALIZED.load(Ordering::Relaxed) {
+            addr_of!(LOGGER).as_ref()
+        } else {
+            None
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn init_logger(loggers: &'static [fn(&str) -> ()]) -> bool {
+    unsafe {
+        if INITIALIZED.swap(true, Ordering::Relaxed) {
+            false
+        } else {
+            LOGGER = LoggerManager { loggers };
+            true
+        }
+    }
+}
+
+#[allow(unused)]
+pub struct LoggerManager {
+    loggers: &'static [fn(&str) -> ()],
+}
+
+#[allow(unused)]
+impl LoggerManager {
+    pub fn log(&self, s: &str) {
+        for logger in self.loggers.iter() {
+            logger(s);
+        }
+    }
 }
 
 #[cfg(feature = "std")]
-pub mod std {
-    use super::Logger;
-    use std::fs::{File, OpenOptions};
-    use std::io::prelude::*;
-    use std::path::Path;
-
-    pub struct FileLogger {
-        outfile: File,
-    }
-
-    #[allow(dead_code)]
-    impl FileLogger {
-        pub fn new(path: &Path, options: &OpenOptions) -> Result<Self, std::io::Error> {
-            Ok(Self {
-                outfile: options.open(path)?,
-            })
-        }
-    }
-
-    impl Logger for FileLogger {
-        fn log(&mut self, s: &str) {
-            self.outfile
-                .write_all(s.as_bytes())
-                .expect("Failed to log to file");
-        }
-    }
-
-    pub struct TerminalLogger;
-
-    impl TerminalLogger {
-        #[allow(dead_code)]
-        pub fn new() -> Self {
-            Self {}
-        }
-    }
-
-    impl Logger for TerminalLogger {
-        fn log(&mut self, s: &str) {
-            println!("{}", s);
-        }
-    }
-}
+pub mod std {}
