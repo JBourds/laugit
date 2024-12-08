@@ -3,8 +3,8 @@
 version = 3
 
 [[package]]
-name = "logos"
-version = "0.1.0"
+name = "laugit"
+version = "0.0.0"
 dependencies = [
  "thiserror-no-std",
 ]

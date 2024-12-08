@@ -1,6 +1,7 @@
 #!/bin/bash
-export LOGOS_EVENTS=TestEvent
-export LOGOS_LEVEL=Debug
+cargo clean
+export LAUGIT_EVENTS=TestEvent
+export LAUGIT_LEVEL=LAUGIT_DEBUG
 
 # Run tests with std feature
 echo "Running std tests..."

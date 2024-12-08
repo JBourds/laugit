@@ -1,7 +1,12 @@
 [package]
-name = "logos"
-version = "0.1.0"
+name = "laugit"
+version = "0.0.0"
 edition = "2021"
+description = "Logging library target for std and no_std environments to make log auditing easy and low cost."
+license = "MIT"
+authors = ["Jordan Bourdeau"]
+readme = "README.md"
+repository = "https://github.com/JBourds/laugit"
 
 [features]
 
