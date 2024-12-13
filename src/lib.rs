@@ -5,6 +5,19 @@ use core::cmp;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+#[macro_export]
+macro_rules! log {
+    ($event:literal,
+    $level:expr,
+    $data:expr) => {
+        if option_env!($event).is_some() {
+            if let Some(logger) = logger() {
+                logger.log($event, $level, $data);
+            }
+        }
+    };
+}
+
 static mut LOGGER: LoggerManager = LoggerManager {
     loggers: &[],
     level: LogLevel::Silent,
@@ -23,7 +36,7 @@ pub fn logger() -> Option<&'static LoggerManager> {
 }
 
 #[allow(dead_code)]
-pub fn init_logger(level: LogLevel, loggers: &'static [fn(&str) -> ()]) -> Result<(), LogError> {
+pub fn init_logger(level: LogLevel, loggers: &'static [LogFn]) -> Result<(), LogError> {
     unsafe {
         if INITIALIZED.swap(true, Ordering::Relaxed) {
             Err(LogError::LoggerAlreadyInitialized)
@@ -34,19 +47,21 @@ pub fn init_logger(level: LogLevel, loggers: &'static [fn(&str) -> ()]) -> Resul
     }
 }
 
+type LogFn = fn(&str, &LogLevel, &str) -> ();
+
 #[allow(unused)]
 #[derive(Debug)]
 pub struct LoggerManager {
-    loggers: &'static [fn(&str) -> ()],
+    loggers: &'static [LogFn],
     level: LogLevel,
 }
 
 #[allow(unused)]
 impl LoggerManager {
-    pub fn log(&self, s: &str, level: LogLevel) {
+    pub fn log(&self, event: &str, level: LogLevel, s: &str) {
         if usize::from(&level) >= usize::from(&self.level) {
             for &logger in self.loggers.iter() {
-                logger(s);
+                logger(event, &level, s);
             }
         }
     }
@@ -151,7 +166,7 @@ impl TryFrom<&str> for LogLevel {
         for i in 0..Self::NUM_LOG_LEVELS {
             if Self::MESSAGES[i] == s {
                 return Ok(Self::try_from(i)
-                    .expect("Mismatch between LogLevel message array and number of variants."));
+                    .expect("Mismatch between number of labels and number of variants."));
             }
         }
         Err(())
@@ -171,25 +186,39 @@ mod no_std_tests {
     fn test_log() {
         static mut BUFFER_1: [u8; 64] = [0; 64];
         static mut BUFFER_2: [u8; 64] = [0; 64];
-        fn log_fn1(s: &str) {
-            for (i, c) in "Logger 1:"
-                .as_bytes()
+        fn log_fn1(event: &str, level: &LogLevel, s: &str) {
+            let s1 = "Logger 1: ".as_bytes();
+            let s2 = event.as_bytes();
+            let s3 = <&'static str>::try_from(level)
+                .expect("Log level must implement conversion to string.")
+                .as_bytes();
+            let bytes = s1
                 .iter()
-                .chain(s.as_bytes().iter())
-                .enumerate()
-            {
+                .chain(s2.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s3.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s.as_bytes().iter());
+            for (i, c) in bytes.enumerate() {
                 unsafe {
                     BUFFER_1[i] = *c;
                 }
             }
         }
-        fn log_fn2(s: &str) {
-            for (i, c) in "Logger 2:"
-                .as_bytes()
+        fn log_fn2(event: &str, level: &LogLevel, s: &str) {
+            let s1 = "Logger 2: ".as_bytes();
+            let s2 = event.as_bytes();
+            let s3 = <&'static str>::try_from(level)
+                .expect("Log level must implement conversion to string.")
+                .as_bytes();
+            let bytes = s1
                 .iter()
-                .chain(s.as_bytes().iter())
-                .enumerate()
-            {
+                .chain(s2.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s3.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s.as_bytes().iter());
+            for (i, c) in bytes.enumerate() {
                 unsafe {
                     BUFFER_2[i] = *c;
                 }
@@ -200,10 +229,10 @@ mod no_std_tests {
             level: LogLevel::Debug,
             loggers,
         };
-        logger.log("test", LogLevel::Debug);
+        logger.log("TestEvent", LogLevel::Debug, "test");
         unsafe {
-            let buffer_1_expected = "Logger 1:test".as_bytes();
-            let buffer_2_expected = "Logger 2:test".as_bytes();
+            let buffer_1_expected = "Logger 1: TestEvent DEBUG test".as_bytes();
+            let buffer_2_expected = "Logger 2: TestEvent DEBUG test".as_bytes();
             for i in 0..buffer_1_expected.len() {
                 assert_eq!(buffer_1_expected[i], BUFFER_1[i]);
                 assert_eq!(buffer_2_expected[i], BUFFER_2[i]);
@@ -218,23 +247,31 @@ mod no_std_tests {
     #[test]
     fn test_log_level_hiding() {
         static mut BUFFER_1: [u8; 64] = [0; 64];
-        fn log_fn1(s: &str) {
-            for (i, c) in "Logger 1:"
-                .as_bytes()
+        fn log_fn1(event: &str, level: &LogLevel, s: &str) {
+            let s1 = "Logger 1: ".as_bytes();
+            let s2 = event.as_bytes();
+            let s3 = <&'static str>::try_from(level)
+                .expect("Log level must implement conversion to string.")
+                .as_bytes();
+            let bytes = s1
                 .iter()
-                .chain(s.as_bytes().iter())
-                .enumerate()
-            {
+                .chain(s2.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s3.iter())
+                .chain(" ".as_bytes().iter())
+                .chain(s.as_bytes().iter());
+            for (i, c) in bytes.enumerate() {
                 unsafe {
                     BUFFER_1[i] = *c;
                 }
             }
         }
+
         let logger = LoggerManager {
             level: LogLevel::Info,
             loggers: &[log_fn1],
         };
-        logger.log("Test", LogLevel::Debug);
+        logger.log("TestEvent", LogLevel::Debug, "test");
         unsafe {
             assert!(BUFFER_1.iter().all(|&c| c == 0));
         }
@@ -246,17 +283,27 @@ mod std_tests {
     use super::{LogLevel, LoggerManager};
     #[test]
     fn test_print() {
-        fn log_fn1(s: &str) {
-            println!("Log Function 1: {}", s);
+        fn log_fn1(event: &str, level: &LogLevel, s: &str) {
+            println!(
+                "Log Function 1: {} {} {} ",
+                event,
+                <&'static str>::try_from(level).unwrap(),
+                s
+            );
         }
-        fn log_fn2(s: &str) {
-            println!("Log Function 2: {}", s);
+        fn log_fn2(event: &str, level: &LogLevel, s: &str) {
+            println!(
+                "Log Function 2: {} {} {} ",
+                event,
+                <&'static str>::try_from(level).unwrap(),
+                s
+            );
         }
         let loggers = &[log_fn1, log_fn2];
         let logger = LoggerManager {
             level: LogLevel::Debug,
             loggers,
         };
-        logger.log("test", LogLevel::Debug);
+        logger.log("TestEvent", LogLevel::Debug, "test");
     }
 }
