@@ -43,9 +43,11 @@ pub struct LoggerManager {
 
 #[allow(unused)]
 impl LoggerManager {
-    pub fn log(&self, s: &str) {
-        for &logger in self.loggers.iter() {
-            logger(s);
+    pub fn log(&self, s: &str, level: LogLevel) {
+        if usize::from(&level) >= usize::from(&self.level) {
+            for &logger in self.loggers.iter() {
+                logger(s);
+            }
         }
     }
 }
@@ -198,7 +200,7 @@ mod no_std_tests {
             level: LogLevel::Debug,
             loggers,
         };
-        logger.log("test");
+        logger.log("test", LogLevel::Debug);
         unsafe {
             let buffer_1_expected = "Logger 1:test".as_bytes();
             let buffer_2_expected = "Logger 2:test".as_bytes();
@@ -210,6 +212,31 @@ mod no_std_tests {
                 assert_eq!(0, BUFFER_1[i]);
                 assert_eq!(0, BUFFER_2[i]);
             }
+        }
+    }
+
+    #[test]
+    fn test_log_level_hiding() {
+        static mut BUFFER_1: [u8; 64] = [0; 64];
+        fn log_fn1(s: &str) {
+            for (i, c) in "Logger 1:"
+                .as_bytes()
+                .iter()
+                .chain(s.as_bytes().iter())
+                .enumerate()
+            {
+                unsafe {
+                    BUFFER_1[i] = *c;
+                }
+            }
+        }
+        let logger = LoggerManager {
+            level: LogLevel::Info,
+            loggers: &[log_fn1],
+        };
+        logger.log("Test", LogLevel::Debug);
+        unsafe {
+            assert!(BUFFER_1.iter().all(|&c| c == 0));
         }
     }
 }
@@ -230,6 +257,6 @@ mod std_tests {
             level: LogLevel::Debug,
             loggers,
         };
-        logger.log("test");
+        logger.log("test", LogLevel::Debug);
     }
 }
