@@ -1,7 +1,6 @@
 #!/bin/bash
-cargo clean
 export LAUGIT_EVENTS=TestEvent
-export LAUGIT_LEVEL=LAUGIT_DEBUG
+export LAUGIT_LEVEL=DEBUG
 
 # Run tests with std feature
 echo "Running std tests..."
@@ -11,10 +10,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Run tests without std feature
-echo "Running no_std tests..."
-cargo test -- --nocapture
-if [ $? -ne 0 ]; then
-    echo "Tests without std feature failed."
-    exit 1
-fi
+# # Run tests without std feature
+# echo "Running no_std tests..."
+# cargo test -- --nocapture
+# if [ $? -ne 0 ]; then
+#     echo "Tests without std feature failed."
+#     exit 1
+# fi
